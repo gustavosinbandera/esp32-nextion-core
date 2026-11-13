@@ -45,7 +45,7 @@ struct PwmConfig {
 
 struct AdcConfig {
     bool enabled{true};
-    gpio_num_t gpio{GPIO_NUM_34};      // ADC1_CH6 (compatible con Wi-Fi activo)
+    gpio_num_t gpio{GPIO_NUM_32};      // ADC1_CH4 (activo en placa U020M 1.0.1)
     float divider_ratio{1.0f};         // Factor divisor resistivo opcional
 };
 
