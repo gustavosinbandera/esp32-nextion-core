@@ -17,6 +17,17 @@ namespace core::ui {
 
 class UiNavigator;
 
+// Estado compartido en vivo entre la Pantalla Física Nextion (Core 1) y la Web por WebSocket (Core 0)
+struct SharedUiState {
+    char active_screen[24]{"settings"};
+    float sine_freq_hz{1.50f};
+    int sine_amp_px{72};
+    int adc_gain_x{1};
+    int selected_adc_idx{0};
+    float last_wave_sample{0.0f}; // Muestra normalizada (-1.0 a +1.0) para graficar en el <canvas> web
+    bool sync_screen_from_web{true};
+};
+
 // Contexto compartido inyectado a todas las pantallas (elimina variables globales)
 struct UiContext {
     peripherals::NextionDriver& display;
@@ -25,6 +36,7 @@ struct UiContext {
     peripherals::AdcDriver& adc;
     config::ConfigStore& config;
     UiNavigator& navigator;
+    SharedUiState& shared;
 };
 
 // =============================================================================
@@ -226,11 +238,14 @@ public:
 
     // Métodos thread-safe que encolan transiciones y eventos hacia la tarea de UI
     void push(const std::string& screen_id);
+    void navigateTo(const std::string& screen_id);
     void pop();
     void requestRefresh();
     void postEncoderEvent(peripherals::EncoderEvent ev);
 
     std::shared_ptr<Screen> activeScreen() const { return current_; }
+    UiContext& context() { return ctx_; }
+    SharedUiState& sharedState() { return shared_; }
 
 private:
     struct UiCommand {
@@ -243,6 +258,7 @@ private:
     void doPush(const std::string& id);
     void doPop();
 
+    SharedUiState shared_{};
     UiContext ctx_;
     std::map<std::string, ScreenFactory> factories_{};
     std::vector<std::shared_ptr<Screen>> history_{};

@@ -74,10 +74,10 @@ public:
             lcd().drawLine(next_x, kPlotMidY, next_x + clear_w - 1, kPlotMidY, color::kGray);
         }
 
-        phase_ += (2.0f * 3.14159265f * freq_hz_) / 32.0f;
+        phase_ += (2.0f * 3.14159265f * ctx().shared.sine_freq_hz) / 32.0f;
         if (phase_ > 628.3185f) phase_ -= 628.3185f;
 
-        int new_y = kPlotMidY - static_cast<int>(std::lround(static_cast<float>(amp_px_) * std::sin(phase_)));
+        int new_y = kPlotMidY - static_cast<int>(std::lround(static_cast<float>(ctx().shared.sine_amp_px) * std::sin(phase_)));
         new_y = std::clamp(new_y, kPlotTop + 2, kPlotBottom - 2);
 
         uint16_t wave_color = (editing_ && selected_ == 1) ? color::kYellow : color::kGreen;
@@ -114,15 +114,15 @@ public:
         int dir = (ev == EncoderEvent::RotateRight) ? +1 : -1;
         if (editing_) {
             if (selected_ == 0) {
-                float next_f = std::clamp(freq_hz_ + dir * 0.25f, 0.25f, 6.0f);
-                if (next_f != freq_hz_) {
-                    freq_hz_ = next_f;
+                float next_f = std::clamp(ctx().shared.sine_freq_hz + dir * 0.25f, 0.25f, 6.0f);
+                if (next_f != ctx().shared.sine_freq_hz) {
+                    ctx().shared.sine_freq_hz = next_f;
                     drawItem(0);
                 }
             } else if (selected_ == 1) {
-                int next_a = std::clamp(amp_px_ + dir * 8, 12, 88);
-                if (next_a != amp_px_) {
-                    amp_px_ = next_a;
+                int next_a = std::clamp(ctx().shared.sine_amp_px + dir * 8, 12, 88);
+                if (next_a != ctx().shared.sine_amp_px) {
+                    ctx().shared.sine_amp_px = next_a;
                     drawItem(1);
                 }
             }
@@ -148,12 +148,12 @@ private:
         if (idx == 0) {
             char buf[48];
             std::snprintf(buf, sizeof(buf), "%sFreq: %.2f Hz%s",
-                          edit ? "[ " : (sel ? "> " : "  "), freq_hz_, edit ? " ]" : "");
+                          edit ? "[ " : (sel ? "> " : "  "), ctx().shared.sine_freq_hz, edit ? " ]" : "");
             lcd().drawXstr(16, 312, 288, 32, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 1) {
             char buf[48];
             std::snprintf(buf, sizeof(buf), "%sAmp:  %d px%s",
-                          edit ? "[ " : (sel ? "> " : "  "), amp_px_, edit ? " ]" : "");
+                          edit ? "[ " : (sel ? "> " : "  "), ctx().shared.sine_amp_px, edit ? " ]" : "");
             lcd().drawXstr(16, 350, 288, 32, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 2) {
             lcd().drawXstr(16, 398, 288, 40, 1,
@@ -234,7 +234,7 @@ public:
             lcd().drawLine(next_x, kPlotMidY, next_x + clear_w - 1, kPlotMidY, color::kGray);
         }
 
-        float norm = (static_cast<float>(raw) / 4095.0f) * static_cast<float>(gain_x_);
+        float norm = (static_cast<float>(raw) / 4095.0f) * static_cast<float>(ctx().shared.adc_gain_x);
         norm = std::clamp(norm, 0.0f, 1.0f);
         int new_y = kPlotBottom - 4 - static_cast<int>(std::lround(norm * static_cast<float>(kPlotHeight - 8)));
         new_y = std::clamp(new_y, kPlotTop + 2, kPlotBottom - 2);
@@ -286,9 +286,9 @@ public:
                     drawTelemetryRow(ctx().adc.readVolts(), ctx().adc.readRaw());
                 }
             } else if (selected_ == 1) {
-                int next_g = std::clamp(gain_x_ + dir, 1, 4);
-                if (next_g != gain_x_) {
-                    gain_x_ = next_g;
+                int next_g = std::clamp(ctx().shared.adc_gain_x + dir, 1, 4);
+                if (next_g != ctx().shared.adc_gain_x) {
+                    ctx().shared.adc_gain_x = next_g;
                     drawItem(1);
                 }
             }
@@ -327,7 +327,7 @@ private:
         } else if (idx == 1) {
             char buf[48];
             std::snprintf(buf, sizeof(buf), "%sGain: %dx%s",
-                          edit ? "[ " : (sel ? "> " : "  "), gain_x_, edit ? " ]" : "");
+                          edit ? "[ " : (sel ? "> " : "  "), ctx().shared.adc_gain_x, edit ? " ]" : "");
             lcd().drawXstr(16, 360, 288, 30, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 2) {
             lcd().drawXstr(16, 398, 288, 38, 1,

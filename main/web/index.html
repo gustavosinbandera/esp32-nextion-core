@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ESP32 Nextion Core — Live Scope & GPIO</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 12px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    .title h1 { font-size: 1.02rem; font-weight: 700; }
+    .title p { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--red);
+    }
+    .badge.ok { background: rgba(34, 197, 94, 0.16); color: var(--green); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .status-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stat-pill {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 12px;
+    }
+    .stat-pill .lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; }
+    .stat-pill .val { font-size: 0.92rem; font-weight: 700; color: var(--accent); margin-top: 2px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .card h2 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    canvas {
+      width: 100%;
+      height: 210px;
+      background: #060a12;
+      border: 1px solid #0ea5e9;
+      border-radius: 8px;
+      display: block;
+    }
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .btn {
+      background: #334155;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.78rem;
+      cursor: pointer;
+      flex: 1;
+      text-align: center;
+    }
+    .btn.active {
+      background: var(--accent);
+      color: #0f172a;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+    .btn.on {
+      background: rgba(34, 197, 94, 0.22);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .ctrl-box {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px;
+    }
+    .ctrl-box label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .adc-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .adc-chip {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .adc-chip.selected {
+      border-color: var(--amber);
+      background: rgba(245, 158, 11, 0.16);
+    }
+    .adc-chip .pin { font-size: 0.78rem; font-weight: 700; }
+    .adc-chip .v { font-size: 0.85rem; color: var(--green); font-weight: 700; margin-top: 2px; }
+    .adc-chip .r { font-size: 0.66rem; color: var(--muted); }
+    .gpio-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .gpio-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 11px;
+    }
+    .sync-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>ESP32 Nextion Core — Panel Web</h1>
+      <p>Sincronización Bidireccional WebSocket ◄──► Pantalla Nextion</p>
+    </div>
+    <div id="ws-badge" class="badge">
+      <span class="dot"></span>
+      <span id="ws-status">Conectando...</span>
+    </div>
+  </header>
+
+  <!-- ESTADO EN VIVO DE LA PANTALLA NEXTION Y DEL CANAL ADC SELECCIONADO -->
+  <div class="status-strip">
+    <div class="stat-pill">
+      <div class="lbl">Pantalla Actual en Nextion</div>
+      <div class="val" id="nx-screen">--</div>
+    </div>
+    <div class="stat-pill">
+      <div class="lbl">Canal ADC Seleccionado</div>
+      <div class="val" id="nx-adc-ch">--</div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN 1: OSCILOSCOPIO EN VIVO & SELECTOR DE GRÁFICA SINCRONIZADO -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Osciloscopio en Tiempo Real (WebSocket Mirror)</h2>
+      <label class="sync-toggle">
+        <input type="checkbox" id="sync-chk" checked onchange="toggleSync(this.checked)" />
+        Sincronizar con Nextion
+      </label>
+    </div>
+
+    <canvas id="scope-canvas" width="600" height="210"></canvas>
+
+    <!-- Selector de Gráfica / Pantalla -->
+    <div class="btn-row">
+      <button id="btn-sine" class="btn" onclick="selectGraph('sine-graph')">Onda Senoidal (Sine)</button>
+      <button id="btn-adc" class="btn" onclick="selectGraph('adc-graph')">Gráfica ADC (Scope)</button>
+      <button id="btn-adcall" class="btn" onclick="selectGraph('adc-all')">6 ADCs en Nextion</button>
+      <button id="btn-menu" class="btn" onclick="selectGraph('settings')">Menú Principal</button>
+    </div>
+
+    <!-- Parámetros en vivo de la gráfica (Freq, Amp y Gain) -->
+    <div class="controls-grid">
+      <div class="ctrl-box">
+        <label><span>Frecuencia Seno</span><strong id="lbl-freq">1.50 Hz</strong></label>
+        <input id="sl-freq" type="range" min="0.25" max="6.0" step="0.25" value="1.5"
+               oninput="document.getElementById('lbl-freq').textContent=parseFloat(this.value).toFixed(2)+' Hz'"
+               onchange="sendGraphParams()" />
+      </div>
+      <div class="ctrl-box">
+        <label><span>Amplitud / Ganancia ADC</span><strong id="lbl-amp">72 px | 1x</strong></label>
+        <input id="sl-amp" type="range" min="12" max="88" step="4" value="72"
+               oninput="updateAmpLabel()"
+               onchange="sendGraphParams()" />
+      </div>
+    </div>
+
+    <!-- Control remoto del Encoder físico desde la Web -->
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn" onclick="sendEnc('left')">⟲ Giro Izq</button>
+      <button class="btn" onclick="sendEnc('click')">● Click Encoder</button>
+      <button class="btn" onclick="sendEnc('right')">⟳ Giro Der</button>
+      <button class="btn" onclick="sendEnc('back')">⬅ Back (Long)</button>
+    </div>
+  </div>
+
+  <!-- SECCIÓN 2: SELECTOR Y MONITOR EN VIVO DE LOS 6 CANALES ADC1 -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Selector de Canal ADC1 (Toca un pin para seleccionarlo en ESP32 y Nextion)</h2>
+      <div style="display:flex;gap:4px">
+        <button class="btn" style="padding:4px 8px" onclick="setAdcGain(1)">1x</button>
+        <button class="btn" style="padding:4px 8px" onclick="setAdcGain(2)">2x</button>
+        <button class="btn" style="padding:4px 8px" onclick="setAdcGain(4)">4x</button>
+      </div>
+    </div>
+    <div id="adc-grid" class="adc-grid"></div>
+  </div>
+
+  <!-- SECCIÓN 3: CONTROL DE GPIOs Y SALIDA PWM (GPIO 5) -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Control de GPIOs Digitales y PWM (GPIO 5)</h2>
+    </div>
+    <div id="gpio-grid" class="gpio-grid"></div>
+
+    <div class="controls-grid" style="margin-top:10px">
+      <div class="ctrl-box">
+        <label><span>PWM Duty (GPIO 5)</span><strong id="lbl-pwm-duty">0%</strong></label>
+        <input id="sl-pwm-duty" type="range" min="0" max="100" step="5" value="0"
+               oninput="document.getElementById('lbl-pwm-duty').textContent=this.value+'%'"
+               onchange="sendPwm()" />
+      </div>
+      <div class="ctrl-box">
+        <label><span>PWM Frecuencia</span><strong id="lbl-pwm-freq">300 Hz</strong></label>
+        <input id="sl-pwm-freq" type="range" min="50" max="5000" step="50" value="300"
+               oninput="document.getElementById('lbl-pwm-freq').textContent=this.value+' Hz'"
+               onchange="sendPwm()" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    let viewMode = 'sine-graph';
+    let adcGain = 1;
+    const waveHistory = new Array(120).fill(0);
+    const canvas = document.getElementById('scope-canvas');
+    const cctx = canvas.getContext('2d');
+
+    function connectWs() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+      ws.onopen = () => {
+        const b = document.getElementById('ws-badge');
+        b.classList.add('ok');
+        document.getElementById('ws-status').textContent = 'WS En Vivo';
+      };
+      ws.onclose = () => {
+        const b = document.getElementById('ws-badge');
+        b.classList.remove('ok');
+        document.getElementById('ws-status').textContent = 'Reconectando...';
+        setTimeout(connectWs, 1500);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.type === 'state') onStatePacket(d);
+        } catch (e) {}
+      };
+    }
+
+    function sendCmd(obj) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+      }
+    }
+
+    function toggleSync(checked) {
+      sendCmd({ cmd: 'set_screen', screen: viewMode, sync: checked });
+    }
+
+    function selectGraph(scr) {
+      viewMode = scr;
+      const sync = document.getElementById('sync-chk').checked;
+      sendCmd({ cmd: 'set_screen', screen: scr, sync });
+    }
+
+    function selectAdcChannel(index) {
+      sendCmd({ cmd: 'set_adc_ch', index });
+      if (document.getElementById('sync-chk').checked && viewMode !== 'adc-graph') {
+        selectGraph('adc-graph');
+      }
+    }
+
+    function updateAmpLabel() {
+      const amp = document.getElementById('sl-amp').value;
+      document.getElementById('lbl-amp').textContent = `${amp} px | Gain ${adcGain}x`;
+    }
+
+    function sendGraphParams() {
+      const freq = parseFloat(document.getElementById('sl-freq').value);
+      const amp  = parseInt(document.getElementById('sl-amp').value, 10);
+      sendCmd({ cmd: 'set_graph_params', freq, amp, gain: adcGain });
+    }
+
+    function setAdcGain(g) {
+      adcGain = g;
+      updateAmpLabel();
+      sendGraphParams();
+    }
+
+    function sendPwm() {
+      const duty = parseInt(document.getElementById('sl-pwm-duty').value, 10);
+      const freq = parseInt(document.getElementById('sl-pwm-freq').value, 10);
+      sendCmd({ cmd: 'set_pwm', duty, freq });
+    }
+
+    function toggleGpio(gpio, nextState) {
+      sendCmd({ cmd: 'set_gpio', gpio, state: nextState });
+    }
+
+    function sendEnc(action) {
+      sendCmd({ cmd: 'encoder', action });
+    }
+
+    function onStatePacket(d) {
+      document.getElementById('nx-screen').textContent = `[ ${d.screen} ]`;
+      document.getElementById('nx-adc-ch').textContent = `${d.adc_label} — ${d.adc_v.toFixed(2)}V (${d.adc_raw})`;
+
+      // Si la pantalla en Nextion es una gráfica, sincronizar botón activo
+      if (d.screen === 'sine-graph' || d.screen === 'adc-graph') {
+        viewMode = d.screen;
+      }
+      document.getElementById('btn-sine').classList.toggle('active', viewMode === 'sine-graph');
+      document.getElementById('btn-adc').classList.toggle('active', viewMode === 'adc-graph');
+      document.getElementById('btn-adcall').classList.toggle('active', d.screen === 'adc-all');
+      document.getElementById('btn-menu').classList.toggle('active', d.screen === 'settings');
+
+      adcGain = d.adc_gain || 1;
+      document.getElementById('lbl-freq').textContent = `${d.sine_freq.toFixed(2)} Hz`;
+      document.getElementById('sl-freq').value = d.sine_freq;
+      document.getElementById('sl-amp').value = d.sine_amp;
+      updateAmpLabel();
+
+      // Empujar nueva muestra al buffer del osciloscopio web según la vista activa
+      let sampleNorm = 0;
+      if (viewMode === 'adc-graph') {
+        const clamped = Math.min(1.0, (d.adc_raw / 4095.0) * adcGain);
+        sampleNorm = (clamped * 2.0) - 1.0;
+      } else {
+        sampleNorm = d.sine_sample || 0;
+      }
+      waveHistory.push(sampleNorm);
+      if (waveHistory.length > 120) waveHistory.shift();
+      drawCanvas(d);
+
+      // Renderizar las 6 tarjetas de ADC1
+      if (Array.isArray(d.adc_all)) {
+        const ag = document.getElementById('adc-grid');
+        ag.innerHTML = d.adc_all.map((ch, idx) => `
+          <div class="adc-chip ${idx === d.adc_idx ? 'selected' : ''}" onclick="selectAdcChannel(${idx})">
+            <div class="pin">GPIO ${ch.gpio}</div>
+            <div class="v">${ch.v.toFixed(2)} V</div>
+            <div class="r">Raw: ${ch.raw}</div>
+          </div>
+        `).join('');
+      }
+
+      // Renderizar controles GPIO
+      if (Array.isArray(d.gpios)) {
+        const gg = document.getElementById('gpio-grid');
+        gg.innerHTML = d.gpios.map(g => `
+          <div class="gpio-item">
+            <span style="font-size:0.78rem;font-weight:600">${g.name}</span>
+            <button class="btn ${g.state ? 'on' : ''}" style="flex:0 0 68px;padding:6px"
+                    onclick="toggleGpio(${g.gpio}, ${!g.state})">
+              ${g.state ? 'HIGH' : 'LOW'}
+            </button>
+          </div>
+        `).join('');
+      }
+    }
+
+    function drawCanvas(d) {
+      const w = canvas.width;
+      const h = canvas.height;
+      cctx.fillStyle = '#060a12';
+      cctx.fillRect(0, 0, w, h);
+
+      // Cuadrícula de referencia
+      cctx.strokeStyle = '#1e293b';
+      cctx.lineWidth = 1;
+      for (let x = 0; x < w; x += 60) {
+        cctx.beginPath(); cctx.moveTo(x, 0); cctx.lineTo(x, h); cctx.stroke();
+      }
+      cctx.strokeStyle = '#334155';
+      cctx.beginPath(); cctx.moveTo(0, h / 2); cctx.lineTo(w, h / 2); cctx.stroke();
+
+      // Trazo de la onda activa
+      const isAdc = (viewMode === 'adc-graph');
+      cctx.strokeStyle = isAdc ? '#f59e0b' : '#22c55e';
+      cctx.lineWidth = 2.5;
+      cctx.beginPath();
+      const step = w / (waveHistory.length - 1);
+      for (let i = 0; i < waveHistory.length; ++i) {
+        const x = i * step;
+        const y = (h / 2) - (waveHistory[i] * (h * 0.42));
+        if (i === 0) cctx.moveTo(x, y);
+        else cctx.lineTo(x, y);
+      }
+      cctx.stroke();
+
+      // Etiqueta superior dentro del osciloscopio
+      cctx.fillStyle = '#94a3b8';
+      cctx.font = '12px monospace';
+      const label = isAdc
+        ? `MODO: ADC SCOPE | ${d.adc_label} = ${d.adc_v.toFixed(2)}V (Raw ${d.adc_raw}) | Gain ${adcGain}x`
+        : `MODO: SINE WAVE | Freq = ${d.sine_freq.toFixed(2)} Hz | Amp = ${d.sine_amp} px`;
+      cctx.fillText(label, 12, 20);
+    }
+
+    connectWs();
+  </script>
+</body>
+</html>

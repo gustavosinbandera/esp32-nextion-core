@@ -9,7 +9,11 @@
 #include "adc_driver.hpp"
 #include "wifi_service.hpp"
 #include "core_ui.hpp"
+#include "core_portal.hpp"
 #include "app_screens.hpp"
+
+extern const uint8_t index_html_start[] asm("_binary_index_html_start");
+extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 
 namespace {
 constexpr const char* TAG = "MAIN_CORE";
@@ -24,10 +28,11 @@ core::peripherals::WifiService       g_wifi{};
 
 std::shared_ptr<app::screens::WifiScanScreen> g_wifi_scan_screen;
 std::unique_ptr<core::ui::UiNavigator>        g_navigator;
+std::unique_ptr<core::portal::WebPortalService> g_portal;
 } // namespace
 
 extern "C" void app_main(void) {
-    ESP_LOGI(TAG, "=== Iniciando ESP32 Nextion Core Firmware (ESP-IDF + FreeRTOS) ===");
+    ESP_LOGI(TAG, "=== Iniciando ESP32 Nextion Core Firmware (ESP-IDF + FreeRTOS + WebSocket Portal) ===");
 
     // 1. Inicializar NVS y cargar configuración de periféricos
     ESP_ERROR_CHECK(core::config::ConfigStore::initNvs());
@@ -70,10 +75,16 @@ extern "C" void app_main(void) {
     // 7. Arrancar la tarea de UI en FreeRTOS en el menú raíz ("settings")
     g_navigator->start("settings");
 
-    // 8. Inicializar Encoder Rotatorio EC11 (CW=23, CCW=19, SW=18) conectado a la cola del UiNavigator
+    // 8. Iniciar Captive Portal + Servidor HTTP/WebSocket sincronizado en Core 0 (http://192.168.4.1)
+    const size_t html_len = (index_html_end - index_html_start) - 1;
+    g_portal = std::make_unique<core::portal::WebPortalService>(*g_navigator);
+    g_portal->start(index_html_start, html_len);
+
+    // 9. Inicializar Encoder Rotatorio EC11 (CW=23, CCW=19, SW=18) conectado a la cola del UiNavigator
     g_encoder.init(g_periph_cfg.encoder, [](core::peripherals::EncoderEvent ev) {
         g_navigator->postEncoderEvent(ev);
     });
 
-    ESP_LOGI(TAG, "Core Firmware listo y ejecutándose.");
+    ESP_LOGI(TAG, "Core Firmware + Web Portal listos en Wi-Fi '%s' -> http://192.168.4.1",
+             g_periph_cfg.wifi.ap_ssid.c_str());
 }

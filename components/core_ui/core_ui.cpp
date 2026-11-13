@@ -330,7 +330,7 @@ UiNavigator::UiNavigator(peripherals::NextionDriver& display,
                          peripherals::PwmDriver& pwm,
                          peripherals::AdcDriver& adc,
                          config::ConfigStore& config)
-    : ctx_{display, wifi, pwm, adc, config, *this}, cmd_queue_(24) {}
+    : ctx_{display, wifi, pwm, adc, config, *this, shared_}, cmd_queue_(24) {}
 
 void UiNavigator::registerScreen(const std::string& id, ScreenFactory factory) {
     factories_[id] = std::move(factory);
@@ -346,6 +346,14 @@ void UiNavigator::push(const std::string& screen_id) {
     cmd.type = UiCommand::NAV_PUSH;
     std::snprintf(cmd.target_id, sizeof(cmd.target_id), "%s", screen_id.c_str());
     cmd_queue_.send(cmd, pdMS_TO_TICKS(50));
+}
+
+void UiNavigator::navigateTo(const std::string& screen_id) {
+    if (current_ && current_->id() == screen_id) {
+        requestRefresh();
+        return;
+    }
+    push(screen_id);
 }
 
 void UiNavigator::pop() {
@@ -410,6 +418,7 @@ void UiNavigator::doPush(const std::string& id) {
         history_.push_back(current_);
     }
     current_ = std::move(next);
+    std::snprintf(shared_.active_screen, sizeof(shared_.active_screen), "%s", current_->id().c_str());
     ESP_LOGI(TAG, "Navegando -> [%s]", current_->id().c_str());
     current_->onEnter();
 }
@@ -424,6 +433,7 @@ void UiNavigator::doPop() {
     }
     current_ = history_.back();
     history_.pop_back();
+    std::snprintf(shared_.active_screen, sizeof(shared_.active_screen), "%s", current_->id().c_str());
     ESP_LOGI(TAG, "Volviendo <- [%s]", current_->id().c_str());
     current_->onEnter();
 }
