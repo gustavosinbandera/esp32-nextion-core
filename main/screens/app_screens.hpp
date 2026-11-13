@@ -10,7 +10,11 @@
 namespace app::screens {
 
 // =============================================================================
-// 1. Submenú "Graphs" (Contiene: Sine Wave, ADC Graph y Back)
+// 1. Submenú "Graphs"
+//    - Sine Wave:       Generador senoidal con Freq y Amp editables
+//    - ADC Scope:       Osciloscopio ADC con selector de los 6 pines en vivo
+//    - ADC All (6 Pins): Monitor simultáneo de GPIO 36, 39, 32, 33, 34, 35
+//    - Back:            Regresa al menú principal Settings
 // =============================================================================
 class GraphsMenuScreen : public core::ui::MenuScreen {
 public:
@@ -18,16 +22,15 @@ public:
 
 protected:
     void buildMenu() override {
-        addItem("Sine Wave", [this] { nav().push("sine-graph"); });
-        addItem("ADC Graph", [this] { nav().push("adc-graph"); });
+        addItem("Sine Wave",        [this] { nav().push("sine-graph"); });
+        addItem("ADC Scope",        [this] { nav().push("adc-graph"); });
+        addItem("ADC All (6 Pins)", [this] { nav().push("adc-all"); });
         addBackItem("Back");
     }
 };
 
 // =============================================================================
 // 2. Gráfica 1: Onda Senoidal en Tiempo Real (SineWaveScreen)
-//    - Modo Navegación (Teal): Gira para moverte entre Freq, Amp y Back
-//    - Modo Edición (Amarillo [ ... ]): Click para editar Freq o Amp con el encoder
 // =============================================================================
 class SineWaveScreen : public core::ui::Screen {
 public:
@@ -180,14 +183,14 @@ private:
 };
 
 // =============================================================================
-// 3. Gráfica 2: Lectura y Gráfica en Vivo del ADC (AdcGraphScreen - GPIO 34)
-//    - Muestrea ADC1_CH6 (GPIO 34) en tiempo real y grafica la curva de voltaje
-//    - Muestra Voltaje actual (0.00V - 3.10V) y valor crudo (0..4095)
-//    - Permite ajustar la escala vertical (Gain 1x..4x) con el encoder
+// 3. Gráfica 2: Osciloscopio ADC Multicanal (AdcGraphScreen)
+//    - Permite cambiar en vivo entre los 6 GPIOs de ADC1:
+//      GPIO 36 (VP), GPIO 39 (VN), GPIO 32, GPIO 33, GPIO 34, GPIO 35
+//    - Permite ajustar la ganancia vertical (Gain 1x a 4x)
 // =============================================================================
 class AdcGraphScreen : public core::ui::Screen {
 public:
-    AdcGraphScreen() : Screen("adc-graph", "ADC Graph (GPIO34)") {}
+    AdcGraphScreen() : Screen("adc-graph", "ADC Scope") {}
 
     void onEnter() override {
         cursor_x_ = kPlotLeft;
@@ -202,7 +205,7 @@ public:
     void renderFull() override {
         using namespace core::peripherals;
         lcd().clearScreen(color::kBlack);
-        lcd().drawTitle("ADC Graph");
+        lcd().drawTitle("ADC Scope");
 
         lcd().drawRect(kPlotLeft - 2, kPlotTop - 2, kPlotWidth + 4, kPlotHeight + 4, color::kTeal);
         lcd().drawLine(kPlotLeft, kPlotMidY, kPlotRight, kPlotMidY, color::kGray);
@@ -210,6 +213,7 @@ public:
         drawTelemetryRow(ctx().adc.readVolts(), ctx().adc.readRaw());
         drawItem(0);
         drawItem(1);
+        drawItem(2);
     }
 
     void onTick() override {
@@ -230,7 +234,6 @@ public:
             lcd().drawLine(next_x, kPlotMidY, next_x + clear_w - 1, kPlotMidY, color::kGray);
         }
 
-        // Mapear 0..4095 con ganancia ajustable (1x a 4x) al área del gráfico
         float norm = (static_cast<float>(raw) / 4095.0f) * static_cast<float>(gain_x_);
         norm = std::clamp(norm, 0.0f, 1.0f);
         int new_y = kPlotBottom - 4 - static_cast<int>(std::lround(norm * static_cast<float>(kPlotHeight - 8)));
@@ -242,7 +245,6 @@ public:
         prev_y_   = new_y;
         cursor_x_ = next_x;
 
-        // Actualizar lectura numérica de voltaje cada 5 muestras (~275 ms) para no saturar UART
         if (++tick_cnt_ >= 5) {
             tick_cnt_ = 0;
             drawTelemetryRow(volts, raw);
@@ -263,7 +265,7 @@ public:
         }
 
         if (ev == EncoderEvent::Click) {
-            if (selected_ == 1) {
+            if (selected_ == 2) {
                 nav().pop();
                 return;
             }
@@ -275,14 +277,23 @@ public:
         int dir = (ev == EncoderEvent::RotateRight) ? +1 : -1;
         if (editing_) {
             if (selected_ == 0) {
+                // Cambiar entre los 6 pines ADC1 (0..5)
+                int cur = ctx().adc.selectedChannelIndex();
+                int next = std::clamp(cur + dir, 0, 5);
+                if (next != cur) {
+                    ctx().adc.selectChannelIndex(next);
+                    drawItem(0);
+                    drawTelemetryRow(ctx().adc.readVolts(), ctx().adc.readRaw());
+                }
+            } else if (selected_ == 1) {
                 int next_g = std::clamp(gain_x_ + dir, 1, 4);
                 if (next_g != gain_x_) {
                     gain_x_ = next_g;
-                    drawItem(0);
+                    drawItem(1);
                 }
             }
         } else {
-            int next_sel = std::clamp(selected_ + dir, 0, 1);
+            int next_sel = std::clamp(selected_ + dir, 0, 2);
             if (next_sel != selected_) {
                 int prev_sel = selected_;
                 selected_ = next_sel;
@@ -296,8 +307,8 @@ private:
     void drawTelemetryRow(float volts, int raw) {
         using namespace core::peripherals;
         char buf[48];
-        std::snprintf(buf, sizeof(buf), "  GPIO34: %.2f V  (Raw: %4d)", volts, raw);
-        lcd().drawXstr(16, 308, 288, 28, 1, color::kGreen, color::kBlack, 0, 1, 1, buf);
+        std::snprintf(buf, sizeof(buf), "  Val: %.2f V  (Raw: %4d)", volts, raw);
+        lcd().drawXstr(16, 296, 288, 26, 1, color::kGreen, color::kBlack, 0, 1, 1, buf);
     }
 
     void drawItem(int idx) {
@@ -308,12 +319,18 @@ private:
         const uint16_t bg = edit ? color::kYellow : (sel ? color::kTeal : color::kBlack);
 
         if (idx == 0) {
+            const auto& desc = ctx().adc.currentChannelDesc();
             char buf[48];
-            std::snprintf(buf, sizeof(buf), "%sScale Gain: %dx%s",
-                          edit ? "[ " : (sel ? "> " : "  "), gain_x_, edit ? " ]" : "");
-            lcd().drawXstr(16, 346, 288, 32, 1, fg, bg, 0, 1, 1, buf);
+            std::snprintf(buf, sizeof(buf), "%sPin: %s%s",
+                          edit ? "[ " : (sel ? "> " : "  "), desc.label, edit ? " ]" : "");
+            lcd().drawXstr(16, 326, 288, 30, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 1) {
-            lcd().drawXstr(16, 398, 288, 40, 1,
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%sGain: %dx%s",
+                          edit ? "[ " : (sel ? "> " : "  "), gain_x_, edit ? " ]" : "");
+            lcd().drawXstr(16, 360, 288, 30, 1, fg, bg, 0, 1, 1, buf);
+        } else if (idx == 2) {
+            lcd().drawXstr(16, 398, 288, 38, 1,
                            sel ? color::kBlack : color::kTeal,
                            sel ? color::kTeal  : color::kBlack,
                            1, 1, 1, "Back");
@@ -323,8 +340,8 @@ private:
     static constexpr int kPlotLeft   = 16;
     static constexpr int kPlotRight  = 304;
     static constexpr int kPlotWidth  = kPlotRight - kPlotLeft;
-    static constexpr int kPlotTop    = 100;
-    static constexpr int kPlotHeight = 196;
+    static constexpr int kPlotTop    = 96;
+    static constexpr int kPlotHeight = 192;
     static constexpr int kPlotBottom = kPlotTop + kPlotHeight;
     static constexpr int kPlotMidY   = kPlotTop + (kPlotHeight / 2);
     static constexpr int kStepX      = 6;
@@ -339,7 +356,99 @@ private:
 };
 
 // =============================================================================
-// 4. Pantalla Principal (SettingsScreen) — Incluye el menú "Graphs"
+// 4. Gráfica 3: Escáner en Vivo de los 6 Canales ADC1 a la vez (AdcAllPinsScreen)
+//    - Muestra en tiempo real los 6 pines ADC1 (GPIO 36, 39, 32, 33, 34, 35)
+//    - Si haces Click sobre cualquiera de los 6 pines, abre su gráfica en ADC Scope
+// =============================================================================
+class AdcAllPinsScreen : public core::ui::Screen {
+public:
+    AdcAllPinsScreen() : Screen("adc-all", "ADC1 (6 Pins)") {}
+
+    void onEnter() override {
+        selected_ = 0;
+        tick_div_ = 0;
+        renderFull();
+    }
+
+    void renderFull() override {
+        using namespace core::peripherals;
+        lcd().clearScreen(color::kBlack);
+        lcd().drawTitle("ADC1 6 Channels");
+        for (int i = 0; i <= 6; ++i) {
+            drawRow(i);
+        }
+    }
+
+    void onTick() override {
+        // Refresca valores cada ~220 ms (4 ticks)
+        if (++tick_div_ >= 4) {
+            tick_div_ = 0;
+            for (int i = 0; i < 6; ++i) {
+                drawRow(i);
+            }
+        }
+    }
+
+    void onEncoder(core::peripherals::EncoderEvent ev) override {
+        using core::peripherals::EncoderEvent;
+
+        if (ev == EncoderEvent::LongPress) {
+            nav().pop();
+            return;
+        }
+
+        if (ev == EncoderEvent::Click) {
+            if (selected_ == 6) {
+                nav().pop();
+            } else {
+                // Selecciona ese pin ADC y salta directo al osciloscopio ADC Scope
+                ctx().adc.selectChannelIndex(selected_);
+                nav().push("adc-graph");
+            }
+            return;
+        }
+
+        int dir = (ev == EncoderEvent::RotateRight) ? +1 : -1;
+        int next_sel = std::clamp(selected_ + dir, 0, 6);
+        if (next_sel != selected_) {
+            int prev = selected_;
+            selected_ = next_sel;
+            drawRow(prev);
+            drawRow(selected_);
+        }
+    }
+
+private:
+    void drawRow(int idx) {
+        using namespace core::peripherals;
+        const bool sel = (selected_ == idx);
+
+        if (idx < 6) {
+            const auto& ch = kAdc1Channels[idx];
+            int raw = ctx().adc.readRawByIndex(idx);
+            float v = ctx().adc.readVoltsByIndex(idx);
+            char buf[52];
+            std::snprintf(buf, sizeof(buf), "%sGPIO%d: %.2fV (%4d)",
+                          sel ? "> " : "  ", static_cast<int>(ch.gpio), v, raw);
+            int y = 98 + idx * 46;
+            lcd().drawXstr(16, y, 288, 38, 1,
+                           sel ? color::kBlack : color::kWhite,
+                           sel ? color::kTeal  : color::kBlack,
+                           0, 1, 1, buf);
+        } else {
+            lcd().drawXstr(16, 398, 288, 40, 1,
+                           sel ? color::kBlack : color::kTeal,
+                           sel ? color::kTeal  : color::kBlack,
+                           1, 1, 1, "Back");
+        }
+    }
+
+    int selected_{0};
+    int tick_div_{0};
+};
+
+// =============================================================================
+// 5. Pantalla Principal (SettingsScreen)
 // =============================================================================
 class SettingsScreen : public core::ui::MenuScreen {
 public:
@@ -356,7 +465,7 @@ protected:
 };
 
 // =============================================================================
-// 5. Pantalla de Menú Wi-Fi (WifiScreen)
+// 6. Pantalla de Menú Wi-Fi (WifiScreen)
 // =============================================================================
 class WifiScreen : public core::ui::MenuScreen {
 public:
@@ -372,7 +481,7 @@ protected:
 };
 
 // =============================================================================
-// 6. Pantalla de Escaneo Wi-Fi Paginada (WifiScanScreen)
+// 7. Pantalla de Escaneo Wi-Fi Paginada (WifiScanScreen)
 // =============================================================================
 class WifiScanScreen : public core::ui::PaginatedListScreen {
 public:
@@ -405,7 +514,7 @@ public:
 };
 
 // =============================================================================
-// 7. Pantalla Bluetooth (BluetoothScreen)
+// 8. Pantalla Bluetooth (BluetoothScreen)
 // =============================================================================
 class BluetoothScreen : public core::ui::MenuScreen {
 public:
@@ -422,7 +531,7 @@ protected:
 };
 
 // =============================================================================
-// 8. Pantalla Interactiva de Periféricos (PWM GPIO 5 + Controles con Encoder)
+// 9. Pantalla Interactiva de Periféricos (PWM GPIO 5 + Controles con Encoder)
 // =============================================================================
 class PwmControlScreen : public core::ui::WidgetScreen {
 public:
@@ -453,7 +562,7 @@ protected:
 };
 
 // =============================================================================
-// 9. Pantalla de Estado Wi-Fi / Sistema
+// 10. Pantalla de Estado Wi-Fi / Sistema
 // =============================================================================
 class WifiStatusScreen : public core::ui::PaginatedListScreen {
 public:
@@ -466,7 +575,7 @@ public:
         addRow("STA IP: " + ctx().wifi.currentIp());
         addRow("UART1 Nextion: RX16 / TX17");
         addRow("Encoder: CW23 CCW19 SW18");
-        addRow("ADC1 In: GPIO34 (" + std::to_string(ctx().adc.readRaw()) + ")");
+        addRow("ADC1: 6 Ch (36,39,32,33,34,35)");
         PaginatedListScreen::onEnter();
     }
 };

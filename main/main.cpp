@@ -59,6 +59,7 @@ extern "C" void app_main(void) {
     g_navigator->registerScreen("graphs",      [] { return std::make_shared<app::screens::GraphsMenuScreen>(); });
     g_navigator->registerScreen("sine-graph",  [] { return std::make_shared<app::screens::SineWaveScreen>(); });
     g_navigator->registerScreen("adc-graph",   [] { return std::make_shared<app::screens::AdcGraphScreen>(); });
+    g_navigator->registerScreen("adc-all",     [] { return std::make_shared<app::screens::AdcAllPinsScreen>(); });
     g_navigator->registerScreen("wifi",        [] { return std::make_shared<app::screens::WifiScreen>(); });
     g_navigator->registerScreen("wifi-scan",   [] { return g_wifi_scan_screen; });
     g_navigator->registerScreen("bluetooth",   [] { return std::make_shared<app::screens::BluetoothScreen>(); });
