@@ -6,6 +6,7 @@
 #include "nextion_driver.hpp"
 #include "encoder_driver.hpp"
 #include "pwm_driver.hpp"
+#include "adc_driver.hpp"
 #include "wifi_service.hpp"
 #include "core_ui.hpp"
 #include "app_screens.hpp"
@@ -18,6 +19,7 @@ core::config::BoardPeripheralsConfig g_periph_cfg{};
 core::peripherals::NextionDriver    g_display{};
 core::peripherals::EncoderDriver    g_encoder{};
 core::peripherals::PwmDriver        g_pwm{};
+core::peripherals::AdcDriver        g_adc{};
 core::peripherals::WifiService      g_wifi{};
 
 std::shared_ptr<app::screens::WifiScanScreen> g_wifi_scan_screen;
@@ -37,11 +39,12 @@ extern "C" void app_main(void) {
     g_display.clearScreen();
     g_display.drawTitle("Cargando...");
 
-    // 3. Inicializar periférico PWM (GPIO 5, 300 Hz)
+    // 3. Inicializar periféricos PWM (GPIO 5, 300 Hz) y ADC1 (GPIO 34)
     g_pwm.init(g_periph_cfg.pwm);
+    g_adc.init(g_periph_cfg.adc);
 
     // 4. Crear el navegador y motor de UI genérico
-    g_navigator = std::make_unique<core::ui::UiNavigator>(g_display, g_wifi, g_pwm, g_config);
+    g_navigator = std::make_unique<core::ui::UiNavigator>(g_display, g_wifi, g_pwm, g_adc, g_config);
     g_wifi_scan_screen = std::make_shared<app::screens::WifiScanScreen>();
 
     // 5. Inicializar Wi-Fi AP+STA y enlazar resultados de escaneo asíncrono a WifiScanScreen

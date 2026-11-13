@@ -10,6 +10,7 @@
 #include "nextion_driver.hpp"
 #include "encoder_driver.hpp"
 #include "pwm_driver.hpp"
+#include "adc_driver.hpp"
 #include "wifi_service.hpp"
 
 namespace core::ui {
@@ -21,6 +22,7 @@ struct UiContext {
     peripherals::NextionDriver& display;
     peripherals::WifiService& wifi;
     peripherals::PwmDriver& pwm;
+    peripherals::AdcDriver& adc;
     config::ConfigStore& config;
     UiNavigator& navigator;
 };
@@ -214,6 +216,7 @@ public:
     UiNavigator(peripherals::NextionDriver& display,
                 peripherals::WifiService& wifi,
                 peripherals::PwmDriver& pwm,
+                peripherals::AdcDriver& adc,
                 config::ConfigStore& config);
 
     void registerScreen(const std::string& id, ScreenFactory factory);

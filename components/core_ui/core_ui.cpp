@@ -328,8 +328,9 @@ void WidgetScreen::onEncoder(peripherals::EncoderEvent ev) {
 UiNavigator::UiNavigator(peripherals::NextionDriver& display,
                          peripherals::WifiService& wifi,
                          peripherals::PwmDriver& pwm,
+                         peripherals::AdcDriver& adc,
                          config::ConfigStore& config)
-    : ctx_{display, wifi, pwm, config, *this}, cmd_queue_(24) {}
+    : ctx_{display, wifi, pwm, adc, config, *this}, cmd_queue_(24) {}
 
 void UiNavigator::registerScreen(const std::string& id, ScreenFactory factory) {
     factories_[id] = std::move(factory);

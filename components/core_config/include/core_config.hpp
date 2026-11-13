@@ -43,6 +43,12 @@ struct PwmConfig {
     uint32_t freq_hz{300};             // pwm.freq = 300
 };
 
+struct AdcConfig {
+    bool enabled{true};
+    gpio_num_t gpio{GPIO_NUM_34};      // ADC1_CH6 (compatible con Wi-Fi activo)
+    float divider_ratio{1.0f};         // Factor divisor resistivo opcional
+};
+
 struct WifiConfig {
     std::string ap_ssid{"CoreFW_Nextion"};
     std::string ap_pass{""};
@@ -53,6 +59,7 @@ struct BoardPeripheralsConfig {
     NextionPortConfig nextion{};
     EncoderConfig encoder{};
     PwmConfig pwm{};
+    AdcConfig adc{};
     WifiConfig wifi{};
 };
 
