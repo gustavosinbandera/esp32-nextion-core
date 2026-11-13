@@ -55,8 +55,10 @@ extern "C" void app_main(void) {
     });
 
     // 6. Registrar todas las pantallas en el Router del motor UI
-    g_navigator->registerScreen("scope",       [] { return std::make_shared<app::screens::WaveformScreen>(); });
     g_navigator->registerScreen("settings",    [] { return std::make_shared<app::screens::SettingsScreen>(); });
+    g_navigator->registerScreen("graphs",      [] { return std::make_shared<app::screens::GraphsMenuScreen>(); });
+    g_navigator->registerScreen("sine-graph",  [] { return std::make_shared<app::screens::SineWaveScreen>(); });
+    g_navigator->registerScreen("adc-graph",   [] { return std::make_shared<app::screens::AdcGraphScreen>(); });
     g_navigator->registerScreen("wifi",        [] { return std::make_shared<app::screens::WifiScreen>(); });
     g_navigator->registerScreen("wifi-scan",   [] { return g_wifi_scan_screen; });
     g_navigator->registerScreen("bluetooth",   [] { return std::make_shared<app::screens::BluetoothScreen>(); });
@@ -64,9 +66,8 @@ extern "C" void app_main(void) {
     g_navigator->registerScreen("wifi-status", [] { return std::make_shared<app::screens::WifiStatusScreen>(); });
     g_navigator->registerScreen("sys-info",    [] { return std::make_shared<app::screens::WifiStatusScreen>(); });
 
-    // 7. Arrancar la tarea de UI en FreeRTOS con "settings" en la base y abrir directo el osciloscopio ("scope")
+    // 7. Arrancar la tarea de UI en FreeRTOS en el menú raíz ("settings")
     g_navigator->start("settings");
-    g_navigator->push("scope");
 
     // 8. Inicializar Encoder Rotatorio EC11 (CW=23, CCW=19, SW=18) conectado a la cola del UiNavigator
     g_encoder.init(g_periph_cfg.encoder, [](core::peripherals::EncoderEvent ev) {

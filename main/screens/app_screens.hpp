@@ -10,15 +10,28 @@
 namespace app::screens {
 
 // =============================================================================
-// 1. Pantalla de Osciloscopio / Onda Senoidal en Tiempo Real (WaveformScreen)
-//    - Barrido incremental sin parpadeo (estilo ECG/Osciloscopio)
-//    - Giro del encoder: ajusta Frecuencia o Amplitud en tiempo real
-//    - Click corto del encoder: alterna entre [Ajustar Freq] -> [Ajustar Amp] -> [Salir al Menú]
-//    - LongPress (>800ms): regresa al menú Settings
+// 1. Submenú "Graphs" (Contiene: Sine Wave, ADC Graph y Back)
 // =============================================================================
-class WaveformScreen : public core::ui::Screen {
+class GraphsMenuScreen : public core::ui::MenuScreen {
 public:
-    WaveformScreen() : Screen("scope", "Sine Wave Scope") {}
+    GraphsMenuScreen() : MenuScreen("graphs", "Graphs") {}
+
+protected:
+    void buildMenu() override {
+        addItem("Sine Wave", [this] { nav().push("sine-graph"); });
+        addItem("ADC Graph", [this] { nav().push("adc-graph"); });
+        addBackItem("Back");
+    }
+};
+
+// =============================================================================
+// 2. Gráfica 1: Onda Senoidal en Tiempo Real (SineWaveScreen)
+//    - Modo Navegación (Teal): Gira para moverte entre Freq, Amp y Back
+//    - Modo Edición (Amarillo [ ... ]): Click para editar Freq o Amp con el encoder
+// =============================================================================
+class SineWaveScreen : public core::ui::Screen {
+public:
+    SineWaveScreen() : Screen("sine-graph", "Sine Wave") {}
 
     void onEnter() override {
         cursor_x_ = kPlotLeft;
@@ -33,9 +46,8 @@ public:
     void renderFull() override {
         using namespace core::peripherals;
         lcd().clearScreen(color::kBlack);
-        lcd().drawTitle("Sine Wave Scope");
+        lcd().drawTitle("Sine Wave");
 
-        // Marco exterior del osciloscopio y ejes de referencia
         lcd().drawRect(kPlotLeft - 2, kPlotTop - 2, kPlotWidth + 4, kPlotHeight + 4, color::kTeal);
         lcd().drawLine(kPlotLeft, kPlotMidY, kPlotRight, kPlotMidY, color::kGray);
 
@@ -88,20 +100,16 @@ public:
 
         if (ev == EncoderEvent::Click) {
             if (selected_ == 2) {
-                // Botón "Back to Menu"
                 nav().pop();
                 return;
             }
-            // En Freq (0) o Amp (1): Click entra o sale del modo edición
             editing_ = !editing_;
             drawItem(selected_);
             return;
         }
 
         int dir = (ev == EncoderEvent::RotateRight) ? +1 : -1;
-
         if (editing_) {
-            // Modo Edición: el giro cambia el valor del campo activo
             if (selected_ == 0) {
                 float next_f = std::clamp(freq_hz_ + dir * 0.25f, 0.25f, 6.0f);
                 if (next_f != freq_hz_) {
@@ -116,7 +124,6 @@ public:
                 }
             }
         } else {
-            // Modo Navegación: el giro sube/baja libremente entre Freq (0), Amp (1) y Back (2)
             int next_sel = std::clamp(selected_ + dir, 0, 2);
             if (next_sel != selected_) {
                 int prev_sel = selected_;
@@ -132,30 +139,24 @@ private:
         using namespace core::peripherals;
         const bool sel  = (selected_ == idx);
         const bool edit = (sel && editing_);
-
-        // Colores: Amarillo al editar valor, Teal al estar seleccionado, Blanco/Negro en reposo
         const uint16_t fg = edit ? color::kBlack : (sel ? color::kBlack : color::kWhite);
         const uint16_t bg = edit ? color::kYellow : (sel ? color::kTeal : color::kBlack);
 
         if (idx == 0) {
             char buf[48];
             std::snprintf(buf, sizeof(buf), "%sFreq: %.2f Hz%s",
-                          edit ? "[ " : (sel ? "> " : "  "),
-                          freq_hz_,
-                          edit ? " ]" : "");
+                          edit ? "[ " : (sel ? "> " : "  "), freq_hz_, edit ? " ]" : "");
             lcd().drawXstr(16, 312, 288, 32, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 1) {
             char buf[48];
             std::snprintf(buf, sizeof(buf), "%sAmp:  %d px%s",
-                          edit ? "[ " : (sel ? "> " : "  "),
-                          amp_px_,
-                          edit ? " ]" : "");
+                          edit ? "[ " : (sel ? "> " : "  "), amp_px_, edit ? " ]" : "");
             lcd().drawXstr(16, 350, 288, 32, 1, fg, bg, 0, 1, 1, buf);
         } else if (idx == 2) {
             lcd().drawXstr(16, 398, 288, 40, 1,
                            sel ? color::kBlack : color::kTeal,
                            sel ? color::kTeal  : color::kBlack,
-                           1, 1, 1, "Back to Menu");
+                           1, 1, 1, "Back");
         }
     }
 
@@ -179,7 +180,166 @@ private:
 };
 
 // =============================================================================
-// 2. Pantalla Principal (SettingsScreen) — Declarativa sobre MenuScreen
+// 3. Gráfica 2: Lectura y Gráfica en Vivo del ADC (AdcGraphScreen - GPIO 34)
+//    - Muestrea ADC1_CH6 (GPIO 34) en tiempo real y grafica la curva de voltaje
+//    - Muestra Voltaje actual (0.00V - 3.10V) y valor crudo (0..4095)
+//    - Permite ajustar la escala vertical (Gain 1x..4x) con el encoder
+// =============================================================================
+class AdcGraphScreen : public core::ui::Screen {
+public:
+    AdcGraphScreen() : Screen("adc-graph", "ADC Graph (GPIO34)") {}
+
+    void onEnter() override {
+        cursor_x_ = kPlotLeft;
+        prev_x_   = kPlotLeft;
+        prev_y_   = kPlotBottom - 4;
+        selected_ = 0;
+        editing_  = false;
+        tick_cnt_ = 0;
+        renderFull();
+    }
+
+    void renderFull() override {
+        using namespace core::peripherals;
+        lcd().clearScreen(color::kBlack);
+        lcd().drawTitle("ADC Graph");
+
+        lcd().drawRect(kPlotLeft - 2, kPlotTop - 2, kPlotWidth + 4, kPlotHeight + 4, color::kTeal);
+        lcd().drawLine(kPlotLeft, kPlotMidY, kPlotRight, kPlotMidY, color::kGray);
+
+        drawTelemetryRow(ctx().adc.readVolts(), ctx().adc.readRaw());
+        drawItem(0);
+        drawItem(1);
+    }
+
+    void onTick() override {
+        using namespace core::peripherals;
+
+        const int raw = ctx().adc.readRaw();
+        const float volts = ctx().adc.readVolts();
+
+        int next_x = cursor_x_ + kStepX;
+        if (next_x >= kPlotRight) {
+            cursor_x_ = kPlotLeft;
+            prev_x_   = kPlotLeft;
+            next_x    = kPlotLeft + kStepX;
+            lcd().fillRect(kPlotLeft, kPlotTop, kStepX + 8, kPlotHeight, color::kBlack);
+        } else {
+            int clear_w = std::min(kStepX + 8, kPlotRight - next_x);
+            lcd().fillRect(next_x, kPlotTop, clear_w, kPlotHeight, color::kBlack);
+            lcd().drawLine(next_x, kPlotMidY, next_x + clear_w - 1, kPlotMidY, color::kGray);
+        }
+
+        // Mapear 0..4095 con ganancia ajustable (1x a 4x) al área del gráfico
+        float norm = (static_cast<float>(raw) / 4095.0f) * static_cast<float>(gain_x_);
+        norm = std::clamp(norm, 0.0f, 1.0f);
+        int new_y = kPlotBottom - 4 - static_cast<int>(std::lround(norm * static_cast<float>(kPlotHeight - 8)));
+        new_y = std::clamp(new_y, kPlotTop + 2, kPlotBottom - 2);
+
+        lcd().drawLine(prev_x_, prev_y_, next_x, new_y, color::kYellow);
+
+        prev_x_   = next_x;
+        prev_y_   = new_y;
+        cursor_x_ = next_x;
+
+        // Actualizar lectura numérica de voltaje cada 5 muestras (~275 ms) para no saturar UART
+        if (++tick_cnt_ >= 5) {
+            tick_cnt_ = 0;
+            drawTelemetryRow(volts, raw);
+        }
+    }
+
+    void onEncoder(core::peripherals::EncoderEvent ev) override {
+        using core::peripherals::EncoderEvent;
+
+        if (ev == EncoderEvent::LongPress) {
+            if (editing_) {
+                editing_ = false;
+                drawItem(selected_);
+            } else {
+                nav().pop();
+            }
+            return;
+        }
+
+        if (ev == EncoderEvent::Click) {
+            if (selected_ == 1) {
+                nav().pop();
+                return;
+            }
+            editing_ = !editing_;
+            drawItem(selected_);
+            return;
+        }
+
+        int dir = (ev == EncoderEvent::RotateRight) ? +1 : -1;
+        if (editing_) {
+            if (selected_ == 0) {
+                int next_g = std::clamp(gain_x_ + dir, 1, 4);
+                if (next_g != gain_x_) {
+                    gain_x_ = next_g;
+                    drawItem(0);
+                }
+            }
+        } else {
+            int next_sel = std::clamp(selected_ + dir, 0, 1);
+            if (next_sel != selected_) {
+                int prev_sel = selected_;
+                selected_ = next_sel;
+                drawItem(prev_sel);
+                drawItem(selected_);
+            }
+        }
+    }
+
+private:
+    void drawTelemetryRow(float volts, int raw) {
+        using namespace core::peripherals;
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "  GPIO34: %.2f V  (Raw: %4d)", volts, raw);
+        lcd().drawXstr(16, 308, 288, 28, 1, color::kGreen, color::kBlack, 0, 1, 1, buf);
+    }
+
+    void drawItem(int idx) {
+        using namespace core::peripherals;
+        const bool sel  = (selected_ == idx);
+        const bool edit = (sel && editing_);
+        const uint16_t fg = edit ? color::kBlack : (sel ? color::kBlack : color::kWhite);
+        const uint16_t bg = edit ? color::kYellow : (sel ? color::kTeal : color::kBlack);
+
+        if (idx == 0) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%sScale Gain: %dx%s",
+                          edit ? "[ " : (sel ? "> " : "  "), gain_x_, edit ? " ]" : "");
+            lcd().drawXstr(16, 346, 288, 32, 1, fg, bg, 0, 1, 1, buf);
+        } else if (idx == 1) {
+            lcd().drawXstr(16, 398, 288, 40, 1,
+                           sel ? color::kBlack : color::kTeal,
+                           sel ? color::kTeal  : color::kBlack,
+                           1, 1, 1, "Back");
+        }
+    }
+
+    static constexpr int kPlotLeft   = 16;
+    static constexpr int kPlotRight  = 304;
+    static constexpr int kPlotWidth  = kPlotRight - kPlotLeft;
+    static constexpr int kPlotTop    = 100;
+    static constexpr int kPlotHeight = 196;
+    static constexpr int kPlotBottom = kPlotTop + kPlotHeight;
+    static constexpr int kPlotMidY   = kPlotTop + (kPlotHeight / 2);
+    static constexpr int kStepX      = 6;
+
+    int cursor_x_{kPlotLeft};
+    int prev_x_{kPlotLeft};
+    int prev_y_{kPlotBottom - 4};
+    int gain_x_{1};
+    int selected_{0};
+    bool editing_{false};
+    int tick_cnt_{0};
+};
+
+// =============================================================================
+// 4. Pantalla Principal (SettingsScreen) — Incluye el menú "Graphs"
 // =============================================================================
 class SettingsScreen : public core::ui::MenuScreen {
 public:
@@ -187,16 +347,16 @@ public:
 
 protected:
     void buildMenu() override {
-        addItem("Sine Wave Scope", [this] { nav().push("scope"); });
-        addItem("WiFi",            [this] { nav().push("wifi"); });
-        addItem("Bluetooth",       [this] { nav().push("bluetooth"); });
-        addItem("PWM & IO",        [this] { nav().push("pwm-control"); });
-        addItem("System Info",     [this] { nav().push("sys-info"); });
+        addItem("Graphs",      [this] { nav().push("graphs"); });
+        addItem("WiFi",        [this] { nav().push("wifi"); });
+        addItem("Bluetooth",   [this] { nav().push("bluetooth"); });
+        addItem("PWM & IO",    [this] { nav().push("pwm-control"); });
+        addItem("System Info", [this] { nav().push("sys-info"); });
     }
 };
 
 // =============================================================================
-// 3. Pantalla de Menú Wi-Fi (WifiScreen)
+// 5. Pantalla de Menú Wi-Fi (WifiScreen)
 // =============================================================================
 class WifiScreen : public core::ui::MenuScreen {
 public:
@@ -212,7 +372,7 @@ protected:
 };
 
 // =============================================================================
-// 4. Pantalla de Escaneo Wi-Fi Paginada (WifiScanScreen)
+// 6. Pantalla de Escaneo Wi-Fi Paginada (WifiScanScreen)
 // =============================================================================
 class WifiScanScreen : public core::ui::PaginatedListScreen {
 public:
@@ -245,7 +405,7 @@ public:
 };
 
 // =============================================================================
-// 5. Pantalla Bluetooth (BluetoothScreen)
+// 7. Pantalla Bluetooth (BluetoothScreen)
 // =============================================================================
 class BluetoothScreen : public core::ui::MenuScreen {
 public:
@@ -262,7 +422,7 @@ protected:
 };
 
 // =============================================================================
-// 6. Pantalla Interactiva de Periféricos (PWM GPIO 5 + Controles con Encoder)
+// 8. Pantalla Interactiva de Periféricos (PWM GPIO 5 + Controles con Encoder)
 // =============================================================================
 class PwmControlScreen : public core::ui::WidgetScreen {
 public:
@@ -293,7 +453,7 @@ protected:
 };
 
 // =============================================================================
-// 7. Pantalla de Estado Wi-Fi / Sistema
+// 9. Pantalla de Estado Wi-Fi / Sistema
 // =============================================================================
 class WifiStatusScreen : public core::ui::PaginatedListScreen {
 public:
@@ -306,7 +466,7 @@ public:
         addRow("STA IP: " + ctx().wifi.currentIp());
         addRow("UART1 Nextion: RX16 / TX17");
         addRow("Encoder: CW23 CCW19 SW18");
-        addRow("PWM Out: GPIO5 (" + std::to_string(ctx().pwm.frequency()) + "Hz)");
+        addRow("ADC1 In: GPIO34 (" + std::to_string(ctx().adc.readRaw()) + ")");
         PaginatedListScreen::onEnter();
     }
 };
